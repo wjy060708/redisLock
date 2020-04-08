@@ -29,7 +29,84 @@
   如某个线程执行任务的时长不确定，可能会出现设置的过期时间过短，任务没有执行完，就已经释放锁了，则其他线程会介入则会导致锁失效。
   > 上述问题是redis作为分布式锁的一大弊端，为了避免该问题，redis的分布式锁不要用于较长时间的任务，如果真的偶尔出现了问题，造成的数据小错乱可能需要人工介入解决。
 ### 3.4 可重入性
-  可重入性是指线程在持有锁的情况下再次请求加锁，如果一个锁支持同一个线程的多次加锁，那么这个锁就是可重入的，类似于java语言中的ReentrantLock就是可重入锁。
+  可重入性是指线程在持有锁的情况下再次请求加锁，如果一个锁支持同一个线程的多次加锁，那么这个锁就是可重入的，类似于java语言中的ReentrantLock就是可重入锁，redis分布式锁实现可重入性需要对set指令进行包装 使用ThreadLocal变量来存储当前持有锁的计数。
+    package com.wangjinyin.study.config;
+
+    import java.util.HashMap;
+    import java.util.Map;
+
+    import redis.clients.jedis.Jedis;
+
+    public class RedisWithReetrantLock {
+
+      //使用ThreadLocal对redis的锁进行包装使其可重入
+      private ThreadLocal<Map<String, Integer>> locks = new ThreadLocal<Map<String,Integer>>();
+
+      private  Jedis jedis = null;
+
+      public RedisWithReetrantLock(Jedis jedis) {
+        this.jedis = jedis;
+      }
+
+      //上锁
+      private boolean _lock(String key) {
+        return jedis.set(key, "", "nx", "ex", 5L) != null;
+      }
+
+      //释放锁
+      private void _unlock(String key) {
+        jedis.del(key);
+      }
+
+      private Map<String, Integer> currentLockers() {
+        Map<String, Integer> refs = locks.get();
+
+        if (refs != null) {
+          return refs;
+        }
+        locks.set(new HashMap<String, Integer>());
+        return locks.get();
+      }
+
+      public boolean lock(String key) {
+        Map<String, Integer> refs = currentLockers();
+        Integer refCnt = refs.get(key);
+
+        if (refCnt != null) {
+          refs.put(key, refCnt + 1);
+          return true;
+        } 
+
+        boolean ok = this._lock(key);
+        if (!ok) {
+          return false;
+        }
+
+        refs.put(key, 1);
+        return true;
+      }
+
+      public boolean unlock(String key) {
+        Map<String, Integer> refs = currentLockers();
+        Integer refCnt = refs.get(key);
+
+        if (refCnt == null) {
+          return false;
+        }
+
+        refCnt -= 1;
+        if (refCnt > 0) {
+          refs.put(key, refCnt);
+        } else {
+          refs.remove(key);
+          this._unlock(key);
+        }
+
+        return true;
+      }
+    }
+
+  
   
    
    
