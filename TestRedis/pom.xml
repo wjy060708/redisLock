@@ -24,7 +24,7 @@
 		<jedis.version>2.9.0</jedis.version>
 		<beanUtils.version>1.9.3</beanUtils.version>
 		
-		 <fastjson.version>1.2.46</fastjson.version>
+		 <fastjson.version>1.2.83</fastjson.version>
 	</properties>
 
 	<dependencies>
